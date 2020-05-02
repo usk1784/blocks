@@ -200,6 +200,8 @@ def main():
             paddle.update()
             # ボールの移動
             for ball in balls:
+                # 参照側で値を変更すると、別物になる？
+                # 無理やりコピーで整合背を取っている？
                 ball.blocks = blocks
                 ball.move()
                 blocks = ball.blocks
