@@ -79,15 +79,19 @@ class SubScreenGroup:
         各サブスクリーンのイベント処理を実行する """
         # マウスがクリックされた時
         if event.type == MOUSEBUTTONDOWN:
+            # クリックされたサブスクリーン名を取得
             name, posx, posy = self.get_subscreen_in_pos(event.pos)
             for subscreen in self.sub_screens:
-                if subscreen.name == name:
+                # 表示中かつロックされていない時だけ処理
+                if subscreen.name == name and subscreen.visible and not subscreen.lock:
                     subscreen.mouse_button_down((posx, posy), event.button)
         # マウスが移動
         elif event.type == MOUSEMOTION:
+            # クリックされたサブスクリーン名を取得
             name, posx, posy = self.get_subscreen_in_pos(event.pos)
             for subscreen in self.sub_screens:
-                if subscreen.name == name:
+                # 表示中かつロックされていない時だけ処理
+                if subscreen.name == name and subscreen.visible and not subscreen.lock:
                     subscreen.mouse_motion((posx, posy), event.rel, event.buttons)
 
     def draw(self, screen):
