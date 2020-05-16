@@ -126,11 +126,11 @@ class MenuBar(SubScreen):
         self.cells = []                                 # メニュー項目のリスト
                                                         #  (name, rect)
         # メニュー項目の追加
-        cellrect = Rect(5, 5, self.celwidth, self.celheight)       # セーブボタン
+        cellrect = Rect(5, 5, self.celwidth, self.celheight)        # セーブボタン
         self.cells.append(("save", cellrect))
         cellrect = Rect(57, 5, self.celwidth, self.celheight)       # ロードボタン
         self.cells.append(("load", cellrect))
-        cellrect = Rect(109, 5, self.celwidth, self.celheight)       # ロードボタン
+        cellrect = Rect(109, 5, self.celwidth, self.celheight)      # ロードボタン
         self.cells.append(("clear", cellrect))
 
     def mouse_button_down(self, pos, button):
