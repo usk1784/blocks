@@ -6,7 +6,7 @@ import pygame
 from pygame.locals import *
 
 WINDOW_RECT = Rect(0, 0, 987, 631)                  # ウィンドウのサイズ
-FPS = 30                                            # ゲームのFPS
+FPS = 20                                            # ゲームのFPS
 
 # ユーザーイベント
 USEREVENT_MENU = pygame.USEREVENT
@@ -90,13 +90,13 @@ class SubScreenGroup:
             for i, cell in enumerate(self.get_subscreen("ViewScreen").blocks[\
                             self.get_subscreen("ViewScreen").select_block][1]):
                 cell[0] = tuple(self.get_subscreen("EditScreen").cells[i][0])
-            self.get_subscreen("EditScreen").updateflg = False
+            self.get_subscreen("ViewScreen").updateflg = True
         # ビュー画面の選択ブロックをエディタ画面に反映
         if self.get_subscreen("ViewScreen").updateflg:
             for i, cell in enumerate(self.get_subscreen("EditScreen").cells):
                 cell[0] = tuple(self.get_subscreen("ViewScreen").blocks[\
                                 self.get_subscreen("ViewScreen").select_block][1][i][0])
-            self.get_subscreen("ViewScreen").updateflg = False
+            self.get_subscreen("EditScreen").updateflg = True
 
     def event_handler(self, event):
         """ イベントハンドラー\n
@@ -120,15 +120,18 @@ class SubScreenGroup:
         # メニューバーの項目が押された時
         elif event.type == USEREVENT_MENU:
             if event.menu_type == "menu_clear":
-                self.get_subscreen("EditScreen").cell_clear()
-
+                self.get_subscreen("EditScreen").cells_clear()
+            elif event.menu_type == "menu_clearall":
+                self.get_subscreen("EditScreen").cells_clear()
+                self.get_subscreen("ViewScreen").blocks_clear()
 
     def draw(self, screen):
         """ まとめて描画 """
         for subscreen in self.sub_screens:
-            # 表示中の画面のみ描画
-            if subscreen.visible:
+            # 表示中かつ更新した画面のみ描画
+            if subscreen.visible and subscreen.updateflg:
                 subscreen.draw(screen)
+                subscreen.updateflg = False
 
 class MenuBar(SubScreen):
     """ メニューバー """
@@ -136,16 +139,18 @@ class MenuBar(SubScreen):
         super().__init__(name, rect)
         self.font = pygame.font.SysFont(None, 20)
         self.celheight = 40                             # 1個のセルのサイズ
-        self.celwidth = 50                              # 1個のセルのサイズ
+        self.celwidth = 55                              # 1個のセルのサイズ
         self.cells = []                                 # メニュー項目のリスト
                                                         #  (name, rect)
         # メニュー項目の追加
         cellrect = Rect(5, 5, self.celwidth, self.celheight)        # セーブボタン
         self.cells.append(("save", cellrect))
-        cellrect = Rect(57, 5, self.celwidth, self.celheight)       # ロードボタン
+        cellrect = Rect(62, 5, self.celwidth, self.celheight)       # ロードボタン
         self.cells.append(("load", cellrect))
-        cellrect = Rect(109, 5, self.celwidth, self.celheight)      # ロードボタン
+        cellrect = Rect(119, 5, self.celwidth, self.celheight)      # クリアボタン
         self.cells.append(("clear", cellrect))
+        cellrect = Rect(176, 5, self.celwidth, self.celheight)      # クリアボタン
+        self.cells.append(("clearall", cellrect))
 
     def mouse_button_down(self, pos, button):
         """ ボタンが押されたときの処理 """
@@ -153,10 +158,14 @@ class MenuBar(SubScreen):
             # ボタンが押された項目のイベントを発行
             for cell in self.cells:
                 if cell[1].collidepoint(pos):
-                    if cell[0] in ["save", "load", "clear"]:
+                    if cell[0] in ["save", "load", "clear", "clearall"]:
                         userevent = pygame.event.Event(USEREVENT_MENU,
                                                        {"menu_type": "menu_" + cell[0]})
                         pygame.event.post(userevent)
+
+    def update(self):
+        """ 画面の更新 """
+        self.updateflg = True
 
     def draw(self, screen):
         """ メニューバーの描画 """
@@ -175,6 +184,7 @@ class MenuBar(SubScreen):
                          (0, 0, self.rect.width, self.rect.height), 5)
         # メニューバーをメイン画面に描画
         screen.blit(self.screen, self.rect)
+        self.updateflg = True
 
 class EditScreen(SubScreen):
     """ エディタ部の画面 """
@@ -188,7 +198,7 @@ class EditScreen(SubScreen):
         self.cells = []                 # １ドット情報のリスト
                                         # １ドットは (color, rect)
         # 全セルのRectと色（白）を設定
-        self.cell_clear()
+        self.cells_clear()
 
         self.rect = rect
         self.rect.size = (self.editcelx * self.celsize + 6, self.editcely * self.celsize + 6)
@@ -234,7 +244,7 @@ class EditScreen(SubScreen):
         # エディタ部をメイン画面に描画
         screen.blit(self.screen, self.rect)
 
-    def cell_clear(self):
+    def cells_clear(self):
         """ 全セルのクリア """
         self.cells.clear()
         # 全セルのRectと色（白）を設定
@@ -313,6 +323,11 @@ class MsgScreen(SubScreen):
         super().__init__(name, rect)
         self.font = pygame.font.SysFont(None, 30)
         self.msgs = []
+
+    def update(self):
+        """ 画面の更新 """
+        self.updateflg = True
+
     def draw(self, screen):
         """ メッセージ画面の描画 """
         self.screen.fill(COLOR_WHITE)
@@ -326,7 +341,9 @@ class MsgScreen(SubScreen):
 def main():
     """ メイン処理 """
     pygame.init()
+    pygame.mixer.quit()                 # CPU使用率を下げるため
     screen = pygame.display.set_mode(WINDOW_RECT.size)
+    screen.fill(COLOR_SILVER)
     pygame.display.set_caption("dotedit")
     clock = pygame.time.Clock()
 
@@ -359,8 +376,6 @@ def main():
             msgscreen.msgs.append('mouse pos(x, y):%s, %s' % pygame.mouse.get_pos())
             msgscreen.msgs.append('%s pos(x, y):%s, %s' % \
                                   subscreengroup.get_subscreen_in_pos(pygame.mouse.get_pos()))
-
-        screen.fill(COLOR_SILVER)
 
         # サブ画面の描画
         subscreengroup.draw(screen)
