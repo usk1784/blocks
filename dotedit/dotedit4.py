@@ -40,6 +40,7 @@ class SubScreen:
         self.updateflg = False                      # サブスクリーンが更新されたか？
     def update(self):
         """ サブスクリーンの更新 """
+        self.updateflg = True
     def mouse_button_down(self, pos, button):
         """ ボタンが押されたときの処理 """
     def mouse_motion(self, pos, ref, buttons):
@@ -97,6 +98,10 @@ class SubScreenGroup:
                 cell[0] = tuple(self.get_subscreen("ViewScreen").blocks[\
                                 self.get_subscreen("ViewScreen").select_block][1][i][0])
             self.get_subscreen("EditScreen").updateflg = True
+
+        # パレット画面の色選択をエディタ画面に反映
+        self.get_subscreen("EditScreen").drawcol1 = self.get_subscreen("PalettScreen").drawcol1
+        self.get_subscreen("EditScreen").drawcol2 = self.get_subscreen("PalettScreen").drawcol2
 
     def event_handler(self, event):
         """ イベントハンドラー\n
@@ -163,10 +168,6 @@ class MenuBar(SubScreen):
                                                        {"menu_type": "menu_" + cell[0]})
                         pygame.event.post(userevent)
 
-    def update(self):
-        """ 画面の更新 """
-        self.updateflg = True
-
     def draw(self, screen):
         """ メニューバーの描画 """
         self.screen.fill(COLOR_GRAY)
@@ -184,7 +185,6 @@ class MenuBar(SubScreen):
                          (0, 0, self.rect.width, self.rect.height), 5)
         # メニューバーをメイン画面に描画
         screen.blit(self.screen, self.rect)
-        self.updateflg = True
 
 class EditScreen(SubScreen):
     """ エディタ部の画面 """
@@ -192,17 +192,13 @@ class EditScreen(SubScreen):
         super().__init__(name, rect)
         self.editcelx = 32              # 32 x 32 のドット絵を書く
         self.editcely = 32
-        self.celsize = 15               # 1個のセルのサイズ
+        self.cellsize = 15               # 1個のセルのサイズ
         self.drawcol1 = COLOR_BLACK     # クリックした場所に塗る色１
         self.drawcol2 = COLOR_WHITE     # クリックした場所に塗る色２
         self.cells = []                 # １ドット情報のリスト
                                         # １ドットは (color, rect)
         # 全セルのRectと色（白）を設定
         self.cells_clear()
-
-        self.rect = rect
-        self.rect.size = (self.editcelx * self.celsize + 6, self.editcely * self.celsize + 6)
-        self.screen = pygame.Surface(self.rect.size)
 
     def mouse_button_down(self, pos, button):
         """ ボタンが押されたときの処理 """
@@ -227,6 +223,9 @@ class EditScreen(SubScreen):
                     cell[0] = self.drawcol2
                     self.updateflg = True               # 更新フラグセット
 
+    def update(self):
+        """ サブスクリーンの更新 """
+
     def draw(self, screen):
         """ エディタ部の描画 """
         self.screen.fill(COLOR_BLACK)
@@ -250,8 +249,8 @@ class EditScreen(SubScreen):
         # 全セルのRectと色（白）を設定
         for i in range(self.editcelx):
             for j in range(self.editcely):
-                cellrect = Rect(i * self.celsize +3, j * self.celsize + 3,
-                                self.celsize, self.celsize)
+                cellrect = Rect(i * self.cellsize +3, j * self.cellsize + 3,
+                                self.cellsize, self.cellsize)
                 self.cells.append([COLOR_WHITE, cellrect])
         self.updateflg = True
 
@@ -263,7 +262,7 @@ class ViewScreen(SubScreen):
         self.editcely = 32
         self.blockx = 5                 # エディタ画面何個分か
         self.blocky = 5
-        self.celsize = 3                # 1個のセルのサイズ
+        self.cellsize = 3                # 1個のセルのサイズ
         self.blocks = []                # １ブロック情報のリスト
                                         # １ブロックは (color, rect)
         self.select_block = 0           # 選択中のブロック
@@ -277,6 +276,9 @@ class ViewScreen(SubScreen):
                 if block[0].collidepoint(pos):
                     self.select_block = i
                     self.updateflg = True
+
+    def update(self):
+        """ サブスクリーンの更新 """
 
     def draw(self, screen):
         """ 全体の画像を表示する画面の描画 """
@@ -303,19 +305,69 @@ class ViewScreen(SubScreen):
         self.blocks.clear()
         for g in range(self.blockx):
             for h in range(self.blocky):
-                blockrect = Rect(g * self.celsize * self.editcelx + 3,
-                                 h * self.celsize * self.editcely + 3,
-                                 self.celsize * self.editcelx, self.celsize * self.editcely)
+                blockrect = Rect(g * self.cellsize * self.editcelx + 3,
+                                 h * self.cellsize * self.editcely + 3,
+                                 self.cellsize * self.editcelx, self.cellsize * self.editcely)
                 cells.clear()
                 # 全セルのRectと色（白）を設定
                 for i in range(self.editcelx):
                     for j in range(self.editcely):
-                        cellrect = Rect(i * self.celsize + blockrect.left,
-                                        j * self.celsize + blockrect.top,
-                                        self.celsize, self.celsize)
+                        cellrect = Rect(i * self.cellsize + blockrect.left,
+                                        j * self.cellsize + blockrect.top,
+                                        self.cellsize, self.cellsize)
                         cells.append([COLOR_WHITE, cellrect])
 
                 self.blocks.append([blockrect, list(cells)])
+
+class PalettScreen(SubScreen):
+    """ パレットの画面 """
+    def __init__(self, name, rect):
+        super().__init__(name, rect)
+        self.font = pygame.font.SysFont(None, 20)
+        self.editcelx = 8              # 32 x 32 のドット絵を書く
+        self.editcely = 2
+        self.cellsize = 20              # 1個のセルのサイズ
+        self.drawcol1 = COLOR_BLACK     # クリックした場所に塗る色１
+        self.drawcol2 = COLOR_WHITE     # クリックした場所に塗る色２
+        self.cells = []                 # 色情報のリスト
+                                        # 1マスは (color, rect)
+
+        # パレットの色の設定
+        for i, col in enumerate(PALETTE.values()):
+            cellrect = Rect(110 + (i % self.editcelx) * (self.cellsize + 2),
+                            20 + (i // self.editcelx) * (self.cellsize + 2),
+                            self.cellsize, self.cellsize)
+            self.cells.append([col, cellrect])
+
+    def mouse_button_down(self, pos, button):
+        """ ボタンが押されたときの処理 """
+        for cell in self.cells:
+            # ボタンが押されたセルの色を変更
+            if cell[1].collidepoint(pos):
+                if button == BUTTON_LEFT:
+                    self.drawcol1 = cell[0]
+                elif button == BUTTON_RIGHT:
+                    self.drawcol2 = cell[0]
+
+    def draw(self, screen):
+        """ パレット画面の描画 """
+        self.screen.fill(COLOR_GRAY)
+
+        # 選択中の色表示
+        self.screen.blit(self.font.render(" left      right", True, COLOR_BLACK), (15, 5))
+        pygame.draw.rect(self.screen, self.drawcol1, (10, 20, 42, 42))
+        pygame.draw.rect(self.screen, self.drawcol2, (55, 20, 42, 42))
+
+        # パレットの表示
+        for cell in self.cells:
+            pygame.draw.rect(self.screen, cell[0], cell[1])
+
+        # パレット画面の枠
+        pygame.draw.rect(self.screen, COLOR_BLACK,
+                         (0, 0, self.rect.width, self.rect.height), 5)
+
+        # パレット画面をメイン画面に描画
+        screen.blit(self.screen, self.rect)
 
 class MsgScreen(SubScreen):
     """ メッセージの画面（デバック用？） """
@@ -323,10 +375,6 @@ class MsgScreen(SubScreen):
         super().__init__(name, rect)
         self.font = pygame.font.SysFont(None, 30)
         self.msgs = []
-
-    def update(self):
-        """ 画面の更新 """
-        self.updateflg = True
 
     def draw(self, screen):
         """ メッセージ画面の描画 """
@@ -352,7 +400,7 @@ def main():
     # サブスクリーンを生成しグループに追加
     subscreengroup.append(MenuBar("MenuBar", Rect(5, 5, WINDOW_RECT.width - 10, 50)))
     subscreengroup.append(EditScreen("EditScreen", Rect(5, 60, 486, 486)))
-    subscreengroup.append(SubScreen("PalettScreen", Rect(5, 551, 486, 75)))
+    subscreengroup.append(PalettScreen("PalettScreen", Rect(5, 551, 486, 75)))
     subscreengroup.append(ViewScreen("ViewScreen", Rect(496, 60, 486, 486)))
     msgscreen = MsgScreen("MsgScreen", Rect(496, 551, 486, 75))     # デバッグ用画面
     subscreengroup.append(msgscreen)
