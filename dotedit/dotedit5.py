@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 #coding: utf-8
 """ dotedit.py """
-import sys
+import sys                          # 終了用
+import os                           # ファイル保存、読み込み用
 import pygame
 from pygame.locals import *
 
@@ -9,13 +10,18 @@ WINDOW_RECT = Rect(0, 0, 987, 631)                  # ウィンドウのサイ�
 FPS = 20                                            # ゲームのFPS
 
 # ユーザーイベント
-USEREVENT_MENU = pygame.USEREVENT
+USEREVENT_MENU = pygame.USEREVENT                   # メニューボタン
+USEREVENT_ALLUPDATE = pygame.USEREVENT + 1          # 全更新
 
 # 線とか背景とかの色
 COLOR_BLACK = (0, 0, 0)
 COLOR_GRAY = (128, 128, 128)
 COLOR_SILVER = (192, 192, 192)
 COLOR_WHITE = (255, 255, 255)
+
+# メッセージボックスのタイプ
+MSGBOX_TYPE_OK = 1
+MSGBOX_TYPE_YESNO = 2
 
 # パレットの色(そのうち設定ファイルとかから取得するようになるかも？)
 PALETTE = {
@@ -29,9 +35,10 @@ PALETTE = {
 class SubScreen:
     """ サブスクリーン\n
     サブスクリーンの基本クラス """
-    def __init__(self, name, rect):
+    def __init__(self, name, rect, mainscreen):
         self.name = name                            # サブスクリーンの画面名
         self.rect = rect                            # サブスクリーンのrect
+        self.mainscreen = mainscreen                # メイン画面の参照
         self.screen = pygame.Surface(rect.size)     # サブスクリーンのSurfaceオブジェクト
         self.screenlevel = 0                        # サブスクリーンの重なる順番
                                                     #   小さいほど下になる
@@ -45,11 +52,11 @@ class SubScreen:
         """ ボタンが押されたときの処理 """
     def mouse_motion(self, pos, ref, buttons):
         """ マウスが移動したときの処理 """
-    def draw(self, screen):
+    def draw(self):
         """ サブスクリーンの描画 """
         self.screen.fill(COLOR_WHITE)
         pygame.draw.rect(self.screen, COLOR_BLACK, (0, 0, self.rect.width, self.rect.height), 6)
-        screen.blit(self.screen, self.rect)
+        self.mainscreen.blit(self.screen, self.rect)
 
 class SubScreenGroup:
     """ サブスクリーンクラスをまとめて管理する """
@@ -71,14 +78,23 @@ class SubScreenGroup:
     def get_subscreen_in_pos(self, pos):
         """ posが指しているサブスクリーンの取得\n
         サブスクリーンの名前とサブスクリーン上のposを返す\n
-        サブスクリーンが無いときはNone（文字）を返す """
+        サブスクリーンが無いときはNone（文字）を返す\n
+        重なっているときはscreenlevelで判定"""
+        name = "None"
+        sposx = 0
+        sposy = 0
+        screenlevel = -1
         for subscreen in self.sub_screens:
-            if subscreen.rect.collidepoint(pos):
+            if subscreen.visible\
+                and subscreen.rect.collidepoint(pos)\
+                and screenlevel < subscreen.screenlevel:
                 # サブスクリーン上のposを計算
+                name = subscreen.name
                 sposx = pos[0] - subscreen.rect.x
                 sposy = pos[1] - subscreen.rect.y
-                return subscreen.name, sposx, sposy
-        return "None", 0, 0
+                screenlevel = subscreen.screenlevel
+
+        return name, sposx, sposy
 
     def update(self):
         """ まとめて更新 """
@@ -132,19 +148,24 @@ class SubScreenGroup:
                 self.get_subscreen("ViewScreen").blocks_clear()
             elif event.menu_type == "menu_save":
                 self.get_subscreen("ViewScreen").save()
+        # 全更新
+        elif event.type == USEREVENT_ALLUPDATE:
+            self.mainscreen.fill(COLOR_SILVER)
+            for subscreen in self.sub_screens:
+                subscreen.updateflg = True
 
     def draw(self):
         """ まとめて描画 """
         for subscreen in self.sub_screens:
             # 表示中かつ更新した画面のみ描画
             if subscreen.visible and subscreen.updateflg:
-                subscreen.draw(self.mainscreen)
+                subscreen.draw()
                 subscreen.updateflg = False
 
 class MenuBar(SubScreen):
     """ メニューバー """
-    def __init__(self, name, rect):
-        super().__init__(name, rect)
+    def __init__(self, name, rect, mainscreen):
+        super().__init__(name, rect, mainscreen)
         self.font = pygame.font.SysFont(None, 20)
         self.celheight = 40                             # 1個のセルのサイズ
         self.celwidth = 55                              # 1個のセルのサイズ
@@ -171,7 +192,7 @@ class MenuBar(SubScreen):
                                                        {"menu_type": "menu_" + cell[0]})
                         pygame.event.post(userevent)
 
-    def draw(self, screen):
+    def draw(self):
         """ メニューバーの描画 """
         self.screen.fill(COLOR_GRAY)
         # メニュー項目の描画
@@ -179,6 +200,7 @@ class MenuBar(SubScreen):
             pygame.draw.rect(self.screen, COLOR_SILVER, cell[1])            # セルの色
             self.screen.blit(self.font.render(cell[0], True, COLOR_BLACK),  # 項目名
                              (cell[1].left + 5, 10))
+            pygame.draw.rect(self.screen, COLOR_BLACK, cell[1], 1)            # セルの枠
             # マウスカーソルが項目上にある場合は、枠を描画する
             posx, posy = pygame.mouse.get_pos()
             if cell[1].collidepoint((posx - self.rect.left, posy - self.rect.top)):
@@ -187,12 +209,12 @@ class MenuBar(SubScreen):
         pygame.draw.rect(self.screen, COLOR_BLACK,
                          (0, 0, self.rect.width, self.rect.height), 5)
         # メニューバーをメイン画面に描画
-        screen.blit(self.screen, self.rect)
+        self.mainscreen.blit(self.screen, self.rect)
 
 class EditScreen(SubScreen):
     """ エディタ部の画面 """
-    def __init__(self, name, rect):
-        super().__init__(name, rect)
+    def __init__(self, name, rect, mainscreen):
+        super().__init__(name, rect, mainscreen)
         self.editcelx = 32              # 32 x 32 のドット絵を書く
         self.editcely = 32
         self.cellsize = 15               # 1個のセルのサイズ
@@ -229,7 +251,7 @@ class EditScreen(SubScreen):
     def update(self):
         """ サブスクリーンの更新 """
 
-    def draw(self, screen):
+    def draw(self):
         """ エディタ部の描画 """
         self.screen.fill(COLOR_BLACK)
 
@@ -244,7 +266,7 @@ class EditScreen(SubScreen):
                          (self.rect.width, self.rect.centery - self.rect.top), 2)
 
         # エディタ部をメイン画面に描画
-        screen.blit(self.screen, self.rect)
+        self.mainscreen.blit(self.screen, self.rect)
 
     def cells_clear(self):
         """ 全セルのクリア """
@@ -259,18 +281,18 @@ class EditScreen(SubScreen):
 
 class ViewScreen(SubScreen):
     """ 全体の画像を表示する画面 """
-    def __init__(self, name, rect):
-        super().__init__(name, rect)
+    def __init__(self, name, rect, mainscreen):
+        super().__init__(name, rect, mainscreen)
         self.editcelx = 32              # エディタ画面のサイズ（32 x 32
         self.editcely = 32
         self.blockx = 5                 # エディタ画面何個分か
         self.blocky = 5
-        self.cellsize = 3                # 1個のセルのサイズ
+        self.cellsize = 3               # 1個のセルのサイズ
         self.blocks = []                # １ブロック情報のリスト
                                         # １ブロックは (color, rect)
         self.select_block = 0           # 選択中のブロック
-        self.save_dir = "dotedit/pictures/" # 保存場所
-        self.save_filename = "newpng.png"   # 保存ファイル名
+        self.save_dir = os.path.dirname(__file__) + "/pictures/" # 保存場所
+        self.save_filename = "newfile.png"   # 保存ファイル名
         self.blocks_clear()
 
     def mouse_button_down(self, pos, button):
@@ -284,7 +306,7 @@ class ViewScreen(SubScreen):
     def update(self):
         """ サブスクリーンの更新 """
 
-    def draw(self, screen):
+    def draw(self):
         """ 全体の画像を表示する画面の描画 """
         self.screen.fill(COLOR_BLACK)
 
@@ -300,7 +322,7 @@ class ViewScreen(SubScreen):
                          self.blocks[self.select_block][0], 3)
 
         # 全体の画像を表示する画面をメイン画面に描画
-        screen.blit(self.screen, self.rect)
+        self.mainscreen.blit(self.screen, self.rect)
 
     def blocks_clear(self):
         """ ブロックのクリア """
@@ -324,6 +346,20 @@ class ViewScreen(SubScreen):
 
     def save(self):
         """ 画像ファイルに保存する """
+        msgs = []               # メッセージ用
+
+        # 保存フォルダの存在を確認
+        if not os.path.isdir(self.save_dir):
+            # 保存フォルダの作成
+            os.mkdir(self.save_dir)
+        # 保存ファイルの存在確認
+        if os.path.isfile(self.save_dir + self.save_filename):
+            # 上書き確認
+            msgs.append("overwrite " + self.save_filename + "?")
+            msgbox = MsgBox(MSGBOX_TYPE_YESNO, msgs, self.mainscreen)
+            if not msgbox.return_value:
+                return
+
         savescreen = pygame.Surface((self.editcelx * self.blockx,
                                      self.editcely * self.blocky))
         # save用画面にblock情報を描画する
@@ -338,10 +374,15 @@ class ViewScreen(SubScreen):
         # save
         pygame.image.save(savescreen, self.save_dir + self.save_filename)
 
+        # メッセージボックスを表示
+        msgs.clear()
+        msgs.append("Saved " + self.save_filename)
+        MsgBox(MSGBOX_TYPE_OK, msgs, self.mainscreen)
+
 class PalettScreen(SubScreen):
     """ パレットの画面 """
-    def __init__(self, name, rect):
-        super().__init__(name, rect)
+    def __init__(self, name, rect, mainscreen):
+        super().__init__(name, rect, mainscreen)
         self.font = pygame.font.SysFont(None, 20)
         self.editcelx = 8              # 32 x 32 のドット絵を書く
         self.editcely = 2
@@ -368,7 +409,7 @@ class PalettScreen(SubScreen):
                 elif button == BUTTON_RIGHT:
                     self.drawcol2 = cell[0]
 
-    def draw(self, screen):
+    def draw(self):
         """ パレット画面の描画 """
         self.screen.fill(COLOR_GRAY)
 
@@ -386,24 +427,97 @@ class PalettScreen(SubScreen):
                          (0, 0, self.rect.width, self.rect.height), 5)
 
         # パレット画面をメイン画面に描画
-        screen.blit(self.screen, self.rect)
+        self.mainscreen.blit(self.screen, self.rect)
+
+class MsgBox():
+    """ メッセージ表示用画面 画面中央にメッセージを表示する画面
+        この画面は個別に呼び出される """
+    def __init__(self, msgbox_type, msgs, mainscreen):
+        self.mainscreen = mainscreen
+        self.rect = Rect(0, 0, 300, 150)
+        self.rect.center = WINDOW_RECT.center       # メッセージボックスはメイン画面中央に配置
+        self.screen = pygame.Surface(self.rect.size)# サブスクリーンのSurfaceオブジェクト
+        self.font = pygame.font.SysFont(None, 30)
+        self.msgs = msgs
+        self.cells = []                             # ボタンのリスト
+        self.msgbox_type = msgbox_type              # メッセージボックスのタイプ
+        self.return_value = None                    # メッセージボックスの戻り値
+
+        # ボタンの追加
+        if self.msgbox_type == MSGBOX_TYPE_OK:
+            self.cells.append(["O K", Rect(122, 100, 55, 40), MSGBOX_TYPE_OK])
+        elif self.msgbox_type == MSGBOX_TYPE_YESNO:
+            self.cells.append(["YES", Rect(64, 100, 55, 40), MSGBOX_TYPE_YESNO])
+            self.cells.append(["N O", Rect(180, 100, 55, 40), MSGBOX_TYPE_YESNO])
+
+        # ループ
+        while True:
+            self.draw()
+            event = pygame.event.poll()
+            if event.type == MOUSEBUTTONDOWN:
+                for cell in self.cells:
+                    if cell[1].collidepoint(event.pos[0] - self.rect.left,
+                                            event.pos[1] - self.rect.top):
+                        if cell[0] == "O K":
+                            userevent = pygame.event.Event(USEREVENT_ALLUPDATE)
+                            pygame.event.post(userevent)
+                            return
+                        elif cell[0] == "YES":
+                            self.return_value = True
+                            userevent = pygame.event.Event(USEREVENT_ALLUPDATE)
+                            pygame.event.post(userevent)
+                            return
+                        elif cell[0] == "N O":
+                            self.return_value = False
+                            userevent = pygame.event.Event(USEREVENT_ALLUPDATE)
+                            pygame.event.post(userevent)
+                            return
+            pygame.display.update()
+
+    def draw(self):
+        """ メッセージ画面の描画 """
+        self.screen.fill(COLOR_GRAY)
+
+        # メッセージの表示
+        for i, msg in enumerate(self.msgs):
+            self.screen.blit(self.font.render(msg, True, COLOR_BLACK),  # ボタン名
+                             (30, i * 20 + 20))
+
+        # ボタンの表示
+        for cell in self.cells:
+            if self.msgbox_type == cell[2]:
+                pygame.draw.rect(self.screen, COLOR_SILVER, cell[1])
+                pygame.draw.rect(self.screen, COLOR_BLACK, cell[1], 1)
+                self.screen.blit(self.font.render(cell[0], True, COLOR_BLACK),  # ボタン名
+                                 (cell[1].left + 8, cell[1].top + 10))
+                # マウスカーソルが項目上にある場合は、枠を描画する
+                posx, posy = pygame.mouse.get_pos()
+                if cell[1].collidepoint((posx - self.rect.left, posy - self.rect.top)):
+                    pygame.draw.rect(self.screen, COLOR_BLACK, cell[1], 3)          # セルの枠
+
+        # 画面の枠
+        pygame.draw.rect(self.screen, COLOR_BLACK,
+                         (0, 0, self.rect.width, self.rect.height), 5)
+        # メイン画面に描画
+        self.mainscreen.blit(self.screen, self.rect)
+
 
 class MsgScreen(SubScreen):
     """ メッセージの画面（デバック用？） """
-    def __init__(self, name, rect):
-        super().__init__(name, rect)
+    def __init__(self, name, rect, mainscreen):
+        super().__init__(name, rect, mainscreen)
         self.font = pygame.font.SysFont(None, 30)
         self.msgs = []
 
-    def draw(self, screen):
+    def draw(self):
         """ メッセージ画面の描画 """
-        self.screen.fill(COLOR_WHITE)
+        self.screen.fill(COLOR_GRAY)
         pygame.draw.rect(self.screen, COLOR_BLACK, (0, 0, self.rect.width, self.rect.height), 6)
         #メッセージの表示
         for i, msg in enumerate(self.msgs):
             self.screen.blit(self.font.render(msg, True, COLOR_BLACK), (5, i * 20 + 5))
 
-        screen.blit(self.screen, self.rect)
+        self.mainscreen.blit(self.screen, self.rect)
 
 def main():
     """ メイン処理 """
@@ -417,13 +531,13 @@ def main():
     # サブスクリーングループ
     subscreengroup = SubScreenGroup(screen)
     # サブスクリーンを生成しグループに追加
-    subscreengroup.append(MenuBar("MenuBar", Rect(5, 5, WINDOW_RECT.width - 10, 50)))
-    subscreengroup.append(EditScreen("EditScreen", Rect(5, 60, 486, 486)))
-    subscreengroup.append(PalettScreen("PalettScreen", Rect(5, 551, 486, 75)))
-    subscreengroup.append(ViewScreen("ViewScreen", Rect(496, 60, 486, 486)))
-    msgscreen = MsgScreen("MsgScreen", Rect(496, 551, 486, 75))     # デバッグ用画面
+    subscreengroup.append(MenuBar("MenuBar", Rect(5, 5, WINDOW_RECT.width - 10, 50), screen))
+    subscreengroup.append(EditScreen("EditScreen", Rect(5, 60, 486, 486), screen))
+    subscreengroup.append(PalettScreen("PalettScreen", Rect(5, 551, 486, 75), screen))
+    subscreengroup.append(ViewScreen("ViewScreen", Rect(496, 60, 486, 486), screen))
+    msgscreen = MsgScreen("MsgScreen", Rect(496, 551, 486, 75), screen)     # デバッグ用画面
     subscreengroup.append(msgscreen)
-#    msgscreen.visible = False
+    msgscreen.visible = False
 
     while True:
         for event in pygame.event.get():
@@ -446,6 +560,9 @@ def main():
 
         # サブ画面の描画
         subscreengroup.draw()
+        # タイトルにファイル名を表示
+        pygame.display.set_caption("dotedit : " \
+                                   + subscreengroup.get_subscreen("ViewScreen").save_filename)
 
         pygame.display.update()
         clock.tick(FPS)
