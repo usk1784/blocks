@@ -12,7 +12,8 @@ FPS = 20                                            # ゲームのFPS
 
 # ユーザーイベント
 USEREVENT_MENU = pygame.USEREVENT                   # メニューボタン
-USEREVENT_ALLUPDATE = pygame.USEREVENT + 1          # 全更新
+USEREVENT_PALETTSETTING = pygame.USEREVENT + 1      # パレット設定画面用
+USEREVENT_ALLUPDATE = pygame.USEREVENT + 2          # 全更新
 
 # 線とか背景とかの色
 COLOR_BLACK = (0, 0, 0)
@@ -151,6 +152,37 @@ class SubScreenGroup:
                     self.get_subscreen("ViewScreen").blocks_clear()
             elif event.menu_type == "menu_save":
                 self.get_subscreen("ViewScreen").save()
+            elif event.menu_type == "menu_palett":
+                for screen in self.sub_screens:
+                    if screen.name == "PalettSettingScreen":
+                        screen.visible = True
+                    else:
+                        screen.lock = True
+        # パレット設定画面
+        elif event.type == USEREVENT_PALETTSETTING:
+            # エディット画面のパレットに反映
+            if event.palettset_type == "palettset_O K":
+                palett = self.get_subscreen("PalettSettingScreen").get_palett()
+                self.get_subscreen("PalettScreen").set_palett(palett)
+                # iniファイルの設定変更
+                for col in palett:
+                    self.config.set("palettcolor", str(col[0]),
+                                    f"{col[1][0]}, {col[1][1]}, {col[1][2]}")
+
+                with open(os.path.dirname(__file__) + "/dotedit.ini", "w") as file:
+                    self.config.write(file)
+
+
+            # パレット画面を非表示にして、他の画面のロックを解除
+            for screen in self.sub_screens:
+                if screen.name == "PalettSettingScreen":
+                    screen.visible = False
+                else:
+                    screen.lock = False
+            # 全画面の更新
+            userevent = pygame.event.Event(USEREVENT_ALLUPDATE)
+            pygame.event.post(userevent)
+
         # 全更新
         elif event.type == USEREVENT_ALLUPDATE:
             self.mainscreen.fill(COLOR_SILVER)
@@ -255,6 +287,7 @@ class EditScreen(SubScreen):
 
     def update(self):
         """ サブスクリーンの更新 """
+        # 更新フラグを建てないために何もしない
 
     def draw(self):
         """ エディタ部の描画 """
@@ -310,6 +343,7 @@ class ViewScreen(SubScreen):
 
     def update(self):
         """ サブスクリーンの更新 """
+        # 更新フラグを建てない為に何もしない
 
     def draw(self):
         """ 全体の画像を表示する画面の描画 """
@@ -399,7 +433,7 @@ class PalettScreen(SubScreen):
     def __init__(self, name, rect, mainscreen):
         super().__init__(name, rect, mainscreen)
         self.font = pygame.font.SysFont(None, 20)
-        self.editcelx = 8
+        self.editcelx = 15
         self.editcely = 2
         self.cellsize = 20              # 1個のセルのサイズ
         self.drawcol1 = COLOR_BLACK     # クリックした場所に塗る色１
@@ -451,13 +485,131 @@ class PalettSettingScreen(SubScreen):
     """ パレット設定の画面 """
     def __init__(self, name, rect, mainscreen):
         super().__init__(name, rect, mainscreen)
-        self.font = pygame.font.SysFont(None, 20)
-        self.editcelx = 8
-        self.editcely = 2
-        self.cellsize = 20              # 1個のセルのサイズ
-        self.drawcol1 = COLOR_BLACK     # クリックした場所に塗る色１
-        self.drawcol2 = COLOR_WHITE     # クリックした場所に塗る色２
-        self.cells = []                 # 色情報のリスト
+        self.font = pygame.font.SysFont(None, 30)
+        self.rect.center = WINDOW_RECT.center       # メイン画面中央に配置
+        self.color_table = []           # カラーテーブル用
+        self.color_table_size = 30
+        self.palettcelx = 15
+        self.palettcely = 2
+        self.cellsize = 45              # 1個のセルのサイズ
+        self.palett = []                # 色情報のリスト
+        self.cells = []                 # ボタン
+        self.select_color = 0           # 選択中の色
+        self.screenlevel = 1
+        self.visible = False
+
+        # ボタンの追加
+        self.cells.append(["O K", Rect(600, 275, 100, 40)])
+        self.cells.append(["CANCEL", Rect(600, 330, 100, 40)])
+
+        color_values = (0, 51, 102, 153, 204, 255)      # RGB値の値
+
+        # カラーテーブルの作成
+        count = 0
+        for G in color_values:
+            for B in color_values:
+                for R in color_values:
+                    posx = (count % 18) * self.color_table_size + 20
+                    if (count // 18) % 2 == 0:
+                        posy = (count // 36) * self.color_table_size + 40
+                    else:
+                        posy = ((count // 36) + 6) * self.color_table_size + 40
+
+                    tmprect = Rect(posx, posy,
+                                   self.color_table_size, self.color_table_size)
+                    self.color_table.append(((R, G, B), tmprect))
+                    count += 1
+
+    def mouse_button_down(self, pos, button):
+        """ マウスが押されたときの処理 """
+        if button == BUTTON_LEFT:
+            # ボタンが押されたら項目のイベントを発行
+            for cell in self.cells:
+                if cell[1].collidepoint(pos):
+                    if cell[0] == "O K":
+                        userevent = pygame.event.Event(USEREVENT_PALETTSETTING,
+                                                       {"palettset_type": "palettset_" + cell[0]})
+                        pygame.event.post(userevent)
+                    elif cell[0] == "CANCEL":
+                        userevent = pygame.event.Event(USEREVENT_PALETTSETTING,
+                                                       {"palettset_type": "palettset_" + cell[0]})
+                        pygame.event.post(userevent)
+            # カラーテーブルが押された選択中の色を変更
+            for cell in self.color_table:
+                if cell[1].collidepoint(pos):
+                    self.palett[self.select_color][0] = cell[0]
+            # パレットが押されたときは選択中に設定
+            for i, cell in enumerate(self.palett):
+                if cell[1].collidepoint(pos):
+                    self.select_color = i
+
+
+    def draw(self):
+        """ パレット画面の描画 """
+        self.screen.fill(COLOR_GRAY)
+
+        # 色見本の表示
+        for cell in self.color_table:
+            pygame.draw.rect(self.screen, cell[0], cell[1])
+            pygame.draw.rect(self.screen, COLOR_GRAY, cell[1], 1)
+            # マウスカーソルが項目上にある場合は、枠を描画する
+            posx, posy = pygame.mouse.get_pos()
+            if cell[1].collidepoint((posx - self.rect.left, posy - self.rect.top)):
+                pygame.draw.rect(self.screen, COLOR_BLACK, cell[1], 3)          # セルの枠
+                # RBG値を表示
+                tempstr = "R:" + str(cell[0][0])
+                self.screen.blit(self.font.render(tempstr,
+                                                  True, COLOR_BLACK), (20, 20))
+                tempstr = ", G:" + str(cell[0][1])
+                self.screen.blit(self.font.render(tempstr,
+                                                  True, COLOR_BLACK), (85, 20))
+                tempstr = ", B:" + str(cell[0][2])
+                self.screen.blit(self.font.render(tempstr,
+                                                  True, COLOR_BLACK), (160, 20))
+
+        # パレットの表示
+        for cell in self.palett:
+            pygame.draw.rect(self.screen, cell[0], cell[1])
+            pygame.draw.rect(self.screen, COLOR_GRAY, cell[1], 2)
+
+        # 選択中の色の枠
+        pygame.draw.rect(self.screen, COLOR_BLACK, self.palett[self.select_color][1], 2)
+
+        # ボタンの表示
+        for cell in self.cells:
+            pygame.draw.rect(self.screen, COLOR_SILVER, cell[1])
+            pygame.draw.rect(self.screen, COLOR_BLACK, cell[1], 1)
+            self.screen.blit(self.font.render(cell[0], True, COLOR_BLACK),  # ボタン名
+                             (cell[1].left + 8, cell[1].top + 10))
+            # マウスカーソルが項目上にある場合は、枠を描画する
+            posx, posy = pygame.mouse.get_pos()
+            if cell[1].collidepoint((posx - self.rect.left, posy - self.rect.top)):
+                pygame.draw.rect(self.screen, COLOR_BLACK, cell[1], 3)          # セルの枠
+
+        # 画面の枠
+        pygame.draw.rect(self.screen, COLOR_BLACK,
+                         (0, 0, self.rect.width, self.rect.height), 5)
+
+        # パレット画面をメイン画面に描画
+        self.mainscreen.blit(self.screen, self.rect)
+
+    def set_palett(self, palett):
+        """ パレットの色を設定する 引数は(r, g, b)のリスト"""
+        # パレットの色の設定
+        self.palett.clear()
+        for i, col in enumerate(palett):
+            cellrect = Rect(20 + (i % self.palettcelx) * (self.cellsize + 2),
+                            410 + (i // self.palettcelx) * (self.cellsize + 2),
+                            self.cellsize, self.cellsize)
+            self.palett.append([col[1], cellrect])
+
+    def get_palett(self):
+        """ パレットを取得する """
+        retpalett = []
+        for i, col in enumerate(self.palett):
+            retpalett.append((i, col[0]))
+
+        return retpalett
 
 class MsgBox():
     """ メッセージ表示用画面 画面中央にメッセージを表示する画面
@@ -602,7 +754,6 @@ def inistr_to_intlist(items):
 
     return retitem
 
-
 def main():
     """ メイン処理 """
     pygame.init()                                       # pygameの初期化
@@ -624,6 +775,9 @@ def main():
     palett = inistr_to_intlist(config.items("palettcolor"))
     subscreengroup.get_subscreen("PalettScreen").set_palett(palett)
     subscreengroup.append(ViewScreen("ViewScreen", Rect(496, 60, 486, 486), screen))
+    subscreengroup.append(PalettSettingScreen("PalettSettingScreen",
+                                              Rect(496, 60, 740, 520), screen))
+    subscreengroup.get_subscreen("PalettSettingScreen").set_palett(palett)
     msgscreen = MsgScreen("MsgScreen", Rect(496, 551, 486, 75), screen)     # デバッグ用画面
     subscreengroup.append(msgscreen)
     msgscreen.visible = False
