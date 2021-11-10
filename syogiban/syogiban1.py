@@ -53,21 +53,21 @@ class SyogiMasu(pygame.sprite.Sprite):
     """ 将棋のマスクラス """
     def __init__(self, suzi, dan, koma, imgkoma):
         # 初期処理
-        pygame.sprite.Sprite.__init__(self) # スプライトの初期化？
-        self.suzi = suzi                    # マスのx座標（９〜１）
-        self.dan = dan                      # マスのy座標（一〜九）
-        self.koma = koma                    # 駒の種類
-        self.sentegote = True               # コマの向き（先手か後手か）
-        self.sentaku = False                # マスが選択されているか
-        self.imgkoma = imgkoma              # 駒イメージ（全種類）
-        self.image = self.imgkoma[self.koma]            # 表示する駒イメージ
+        pygame.sprite.Sprite.__init__(self)             # スプライトの初期化？
+        self.suzi = suzi                                # マスのx座標（９〜１）
+        self.dan = dan                                  # マスのy座標（一〜九）
+        self.koma = koma                                # 駒の種類
+        self.sentegote = True                           # コマの向き（先手か後手か）
+        self.sentaku = False                            # マスが選択されているか
+        self.imgkoma = imgkoma.copy()                   # 駒イメージ（全種類）
+        self.image = self.imgkoma[self.koma].copy()     # 表示する駒イメージ
         self.rect = suzidann_rect(self.suzi, self.dan)  # 表示位置
 
     def update(self):
         # マス上の駒の向きを設定
         if self.koma < KOMA_MU:
             if not self.sentegote:
-                self.image = pygame.transform.flip(self.imgkoma[self.koma], False, True)
+                self.image = pygame.transform.flip(self.imgkoma[self.koma].copy(), False, True)
 
     def masuclick(self, pos, button, syougiban):
         # マスがクリックされた時
@@ -84,6 +84,7 @@ class SyogiMasu(pygame.sprite.Sprite):
                     self.sentegote = syougiban.sentegote
                     syougiban.sentaku = False
                 else:
+                    # 非選択状態でマスをクリックすると駒を消す
                     self.koma = KOMA_MU
                     self.image = self.imgkoma[KOMA_MU]
 
@@ -92,28 +93,72 @@ class KomaokibaMasu(pygame.sprite.Sprite):
     """ 駒置き場の駒 """
     def __init__(self, koma, imgkoma):
         # 初期処理
-        pygame.sprite.Sprite.__init__(self) # スプライトの初期化？
-        self.koma = koma                    # 駒の種類
-        self.sentaku = False                # マスが選択されているか
-        self.imgkoma = imgkoma              # 駒イメージ（全種類）
-        self.image = self.imgkoma[self.koma]            # 表示する駒イメージ
+        pygame.sprite.Sprite.__init__(self)         # スプライトの初期化？
+        self.koma = koma                            # 駒の種類
+        self.sentaku = False                        # マスが選択されているか
+        self.imgkoma = imgkoma.copy()               # 駒イメージ（全種類）
+        self.image = self.imgkoma[self.koma].copy() # 表示する駒イメージ
         self.rect = Rect(13 + (MASU_SIZE - 8) * koma, 663, MASU_SIZE - 10, MASU_SIZE -5)  # 表示位置
-        self.imgkoma = imgkoma              # 駒イメージ（全種類）
 
     def masuclick(self, pos, button, syougiban):
         # 駒がクリックされた時
-        if button == BUTTON_LEFT:
-            if self.rect.collidepoint(pos):
-                pygame.draw.rect(syougiban.screen, COLOR_TEAL, self.rect, 0)
-                self.sentaku = True
-                syougiban.sentaku_koma = self.koma
-            else:
-                pygame.draw.rect(syougiban.screen, COLOR_WHITE, self.rect, 0)
-                self.sentaku = False
+        if button == BUTTON_LEFT and self.rect.collidepoint(pos):
+            # 右クリックされた駒を選択状態にする
+            pygame.draw.rect(syougiban.screen, COLOR_TEAL, self.rect, 0)
+            self.sentaku = True
+            syougiban.sentaku = True
+            syougiban.sentaku_koma = self.koma
         else:
             pygame.draw.rect(syougiban.screen, COLOR_WHITE, self.rect, 0)
             self.sentaku = False
 
+
+class komadaimasu(pygame.sprite.Sprite):
+    """ 駒台の駒 """
+    def __init__(self, koma, imgkoma, sentegote):
+        # 初期処理
+        pygame.sprite.Sprite.__init__(self)             # スプライトの初期化？
+        self.font = pygame.font.SysFont("Noto Sans CJK JP", 15)     # 文字表示用フォント
+        self.koma = koma                                # 駒の種類
+        self.komakazu = 0                               # 駒の枚数
+        self.sentaku = False                            # マスが選択されているか
+        self.imgkoma = imgkoma.copy()                   # 駒イメージ（全種類）
+        self.sentegote = sentegote                      # 先手か後手か
+        if not self.sentegote:
+            self.rect = Rect(12, 120 + MASU_SIZE * koma, MASU_SIZE + 10, MASU_SIZE)      # 表示位置
+        else:
+            self.rect = Rect(687, 110 + MASU_SIZE * koma, MASU_SIZE + 10, MASU_SIZE)     # 表示位置
+        self.image = pygame.Surface((self.rect.width, self.rect.height))     # 表示する駒イメージ
+
+    def update(self):
+        # マス上の駒の向きを設定
+        if self.koma < KOMA_MU:
+            self.image.fill(COLOR_WHITE)
+            if self.sentegote:
+                self.image.fill(COLOR_WHITE)
+                self.image.blit(self.imgkoma[self.koma], (0, 0))
+            else:
+                self.image.fill(COLOR_WHITE)
+                self.image.blit(pygame.transform.flip(self.imgkoma[self.koma], False, True), (0, 0))
+
+            # コマの数を表示
+            text = self.font.render("x" + str(self.komakazu).zfill(2), True, COLOR_BLACK)
+            self.image.blit(text, (47, 15))
+
+    def masuclick(self, pos, button, syougiban):
+        # マスがクリックされた時
+        if self.rect.collidepoint(pos) and button == BUTTON_LEFT:
+            # 右クリックだと増加
+            self.komakazu += 1
+            if self.komakazu > 20:
+                self.komakazu = 20
+            syougiban.sentaku = False
+        elif self.rect.collidepoint(pos) and button == BUTTON_RIGHT:
+            # 左クリックだと減少
+            self.komakazu -= 1
+            if self.komakazu < 0:
+                self.komakazu = 0
+            syougiban.sentaku = False
 
 class SyogiBan:
     """ 将棋盤メインクラス """
@@ -154,6 +199,13 @@ class SyogiBan:
         for i in range(KOMA_FU, KOMA_TO):
             group_komaokiba.add(KomaokibaMasu(i, self.koma))
 
+        # 駒台の駒生成
+        group_komadaimasu = pygame.sprite.RenderUpdates()
+        for i in range(KOMA_FU, KOMA_OU):
+            group_komadaimasu.add(komadaimasu(i, self.koma, True))      # 先手用
+        for i in range(KOMA_FU, KOMA_OU):
+            group_komadaimasu.add(komadaimasu(i, self.koma, False))     # 後手用
+
         self.mode = True                # 並べる（True）指す（False）
         self.sentegote = True           # 先手（True）　後手（False）
         self.sentaku = False            # 選択中のマスがあるか？
@@ -189,11 +241,11 @@ class SyogiBan:
         self.screen.blit(text, (658, 590))
         # 駒台
         # 後手の駒台
-        pygame.draw.rect(self.screen, COLOR_WHITE, (10, 100, 75, 540), 0)
-        pygame.draw.rect(self.screen, COLOR_BLACK, (10, 100, 75, 540), 2)
+        pygame.draw.rect(self.screen, COLOR_WHITE, (10, 100, 80, 540), 0)
+        pygame.draw.rect(self.screen, COLOR_BLACK, (10, 100, 80, 540), 2)
         # 先手の駒台
-        pygame.draw.rect(self.screen, COLOR_WHITE, (685, 100, 75, 540), 0)
-        pygame.draw.rect(self.screen, COLOR_BLACK, (685, 100, 75, 540), 2)
+        pygame.draw.rect(self.screen, COLOR_WHITE, (685, 100, 80, 540), 0)
+        pygame.draw.rect(self.screen, COLOR_BLACK, (685, 100, 80, 540), 2)
         # モード
         pygame.draw.rect(self.screen, COLOR_BLACK, (110, 30, 240, 30), 2)
         # 駒置き場
@@ -219,21 +271,33 @@ class SyogiBan:
                         self.sentegote = True
                     elif SENTEGOTE_RECT2.collidepoint(event.pos):
                         self.sentegote = False
+
+                    tmpsentaku = False          # 選択されたマスがあるかの確認用
+
                     # 将棋盤内のマスクリック
                     for sprite in group_masu:
                         sprite.masuclick(event.pos, event.button, self)
                         if sprite.sentaku:
-                            self.sentaku = True
+                            tmpsentaku = True
+                    # 駒置き場のクリック
                     for sprite in group_komaokiba:
                         sprite.masuclick(event.pos, event.button, self)
                         if sprite.sentaku:
-                            self.sentaku = True
-
+                            tmpsentaku = True
+                    # 駒台のクリック
+                    for sprite in group_komadaimasu:
+                        sprite.masuclick(event.pos, event.button, self)
+                        if sprite.sentaku:
+                            tmpsentaku = True
+                    
+                    self.sentaku = tmpsentaku
 
             self.draw()
             group_masu.update()
             group_masu.draw(self.screen)
             group_komaokiba.draw(self.screen)
+            group_komadaimasu.update()
+            group_komadaimasu.draw(self.screen)
 
             pygame.display.update()
             clock.tick(FPS)
