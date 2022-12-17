@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 import re
 
 URL = 'https://ncode.syosetu.com'       # 小説家になろうのURL
-ID = 'n9669bk'                          # 小説のID
+ID = 'zzzzzzz'                          # 小説のID
 HEADERS = {                             # HP読み込み時のヘッダー情報
     'User-Agent':'Mozilla/5.0'
 }
